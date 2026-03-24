@@ -1,0 +1,123 @@
+#!/bin/bash
+
+TAG="BACNetDecoders"
+APP_DIR=${APP_DIR:-.}
+DECODERS_DIR="${APP_DIR}/decoders/multitech"
+
+STAGING_DIR="/tmp/scada/import_definition"
+SRC="lora"
+VENDOR="multitech"
+
+log() { logger -t "$TAG" "$@"; echo "$@"; }
+
+import_decoders() {
+    rm -rf "${STAGING_DIR}"/*
+    mkdir -p "${STAGING_DIR}/${SRC}/${VENDOR}"
+
+    local count=0
+
+    for json_file in "${DECODERS_DIR}"/*.json; do
+        [ -f "$json_file" ] || continue
+
+        local base
+        base=$(basename "$json_file" .json)
+
+        local decoder_src="${DECODERS_DIR}/${base}.js"
+        if [ ! -f "$decoder_src" ]; then
+            log "WARNING: No decoder JS found for ${base}.json, skipping"
+            continue
+        fi
+
+        cp "$json_file" "${STAGING_DIR}/${SRC}/${VENDOR}/${base}.json"
+
+        python3 -c "
+import json, sys
+with open(sys.argv[1], 'r+') as f:
+    d = json.load(f)
+    d['decoder'] = sys.argv[2]
+    f.seek(0); json.dump(d, f, indent=4); f.truncate()
+" "${STAGING_DIR}/${SRC}/${VENDOR}/${base}.json" "${base}-decoder"
+
+        cp "$decoder_src" "${STAGING_DIR}/${SRC}/${VENDOR}/${base}-decoder"
+        count=$((count + 1))
+    done
+
+    if [ "$count" -eq 0 ]; then
+        log "ERROR: No decoder pairs found in ${DECODERS_DIR}"
+        rm -rf "${STAGING_DIR}"/*
+        return 1
+    fi
+
+    log "Importing ${count} decoder definition(s) via scada-cli"
+    scada-cli definitions --import "${STAGING_DIR}" --force
+    local rc=$?
+
+    rm -rf "${STAGING_DIR}"/*
+
+    if [ $rc -ne 0 ]; then
+        log "ERROR: scada-cli definitions --import failed (exit ${rc})"
+        return $rc
+    fi
+
+    log "Successfully imported ${count} decoder definition(s)"
+    return 0
+}
+
+purge_decoders() {
+    local count=0
+
+    for json_file in "${DECODERS_DIR}"/*.json; do
+        [ -f "$json_file" ] || continue
+
+        local base
+        base=$(basename "$json_file" .json)
+
+        log "Purging definition: ${SRC}/${VENDOR}/${base}"
+        scada-cli definitions --purge "${SRC}/${VENDOR}/${base}" 2>/dev/null
+        count=$((count + 1))
+    done
+
+    log "Purged ${count} decoder definition(s)"
+}
+
+restart_scada_services() {
+    for svc in scada-lorawan-decoder scada-bacnet-out; do
+        if [ -f "/etc/init.d/${svc}" ]; then
+            log "Restarting ${svc}"
+            /etc/init.d/${svc} restart 2>/dev/null || true
+        fi
+    done
+}
+
+case "$1" in
+    install)
+        log "Installing decoder definitions"
+        import_decoders
+        rc=$?
+        if [ $rc -ne 0 ]; then
+            printf '{\n  "pid": 0,\n  "AppInfo": "Install failed: scada-cli import error"\n}\n' \
+                > "${APP_DIR}/status.json"
+            exit $rc
+        fi
+        ;;
+    postinstall)
+        log "Running post-install"
+        restart_scada_services
+        decoder_count=$(ls -1 "${DECODERS_DIR}"/*.json 2>/dev/null | wc -l)
+        log "Post-install complete: ${decoder_count} decoder(s) registered"
+        ;;
+    remove)
+        log "Removing decoder definitions"
+        purge_decoders
+        ;;
+    postremove)
+        log "Running post-remove"
+        restart_scada_services
+        ;;
+    *)
+        echo "Usage: $0 {install|postinstall|remove|postremove}" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

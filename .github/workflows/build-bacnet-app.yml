@@ -1,0 +1,91 @@
+name: Build BACNet Decoder Custom App
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'BACNet.zip'
+      - 'MTCT300_direct.zip'
+      - 'bacnet-app/**'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (e.g. 1.0.0)'
+        required: false
+        default: '1.0.0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dos2unix
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq dos2unix
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Build package
+        id: build
+        run: |
+          chmod +x bacnet-app/package.sh
+          if [[ -n "${{ github.event.inputs.version }}" ]]; then
+            bacnet-app/package.sh "${{ github.event.inputs.version }}"
+          else
+            bacnet-app/package.sh
+          fi
+          TGZ=$(ls bacnet-app/dist/bacnet-decoders_*.tgz)
+          VERSION=$(basename "$TGZ" .tgz | sed 's/^bacnet-decoders_//')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Built version: ${VERSION}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bacnet-decoders-${{ steps.build.outputs.version }}
+          path: bacnet-app/dist/*.tgz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Determine version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bacnet-decoders-${{ steps.version.outputs.version }}
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Sensor Decoders v${{ steps.version.outputs.version }}
+          body: |
+            ## Sensor Decoder Definitions Custom App
+
+            LoRaWAN sensor decoder definitions for mPower Payload Management.
+
+            **Sensors included:**
+            - Radio Bridge RBS 301, 304, and 306 series (BACNet)
+            - MultiTech MTCT300 current transformer
+
+            ### Installation
+            Upload `bacnet-decoders_${{ steps.version.outputs.version }}.tgz` via Device Manager or install manually:
+            ```
+            app-manager --command install --appid <UUID> --appfile /tmp/bacnet-decoders_${{ steps.version.outputs.version }}.tgz
+            ```
+          files: dist/*.tgz
+          generate_release_notes: true

@@ -1,0 +1,15 @@
+{
+    "description" : "MultiTech CT300 LoRaWAN Current Transformer Sensor",
+    "properties" : {
+        "uplinkRSSI"              : {"type" : "int16",   "units" : "decibels-millivolt"},
+        "uplinkSNR"               : {"type" : "float",   "units" : "decibels"},
+        "uplinkFCnt"              : {"type" : "uint32"},
+        "ampHourAccumulation"     : {"type" : "float"},
+        "averageAmps"             : {"type" : "float",   "units" : "amps"},
+        "maximumAmps"             : {"type" : "float",   "units" : "amps"},
+        "minimumAmps"             : {"type" : "float",   "units" : "amps"},
+        "capacitorVoltage"        : {"type" : "float",   "units" : "volts"},
+        "temperatureCelsius"      : {"type" : "float"}
+    },
+    "decoder": "MTCT300-direct.js"
+}

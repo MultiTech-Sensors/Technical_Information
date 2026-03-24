@@ -1,0 +1,131 @@
+#!/bin/bash
+
+NAME="bacnet-decoders"
+TAG="BACNetDecoders"
+APP_DIR=${APP_DIR:-.}
+CONFIG_DIR=${CONFIG_DIR:-${APP_DIR}/config}
+DECODERS_DIR="${APP_DIR}/decoders/multitech"
+STATUS_FILE="${APP_DIR}/status.json"
+PID_FILE="/var/run/${NAME}.pid"
+START_STOP_DAEMON="/usr/sbin/start-stop-daemon"
+
+log() { logger -t "$TAG" "$@"; echo "$@"; }
+
+update_status() {
+    local pid="${1:-0}"
+    local msg="$2"
+    cat > "$STATUS_FILE" << EOF
+{
+  "pid": ${pid},
+  "AppInfo": "${msg}"
+}
+EOF
+}
+
+count_decoders() {
+    ls -1 "${DECODERS_DIR}"/*.json 2>/dev/null | wc -l
+}
+
+read_pid() {
+    [ -f "$PID_FILE" ] && cat "$PID_FILE" 2>/dev/null
+}
+
+is_running() {
+    local pid
+    pid=$(read_pid)
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+do_start() {
+    log "Starting ${NAME}"
+
+    if is_running; then
+        log "${NAME} already running (pid $(read_pid))"
+        return 0
+    fi
+
+    $START_STOP_DAEMON --start \
+        --background \
+        --make-pidfile \
+        --pidfile "$PID_FILE" \
+        --chdir "$APP_DIR" \
+        --startas /bin/bash \
+        -- -c "exec sleep infinity"
+
+    sleep 1
+    local pid
+    pid=$(read_pid)
+
+    local decoder_count
+    decoder_count=$(count_decoders)
+
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        update_status "$pid" "${decoder_count} decoders active"
+        log "Started with pid ${pid}: ${decoder_count} decoders"
+    else
+        update_status 0 "Failed to start sentinel process"
+        log "ERROR: sentinel process failed to start"
+        return 1
+    fi
+}
+
+do_stop() {
+    log "Stopping ${NAME}"
+
+    if is_running; then
+        $START_STOP_DAEMON --stop --pidfile "$PID_FILE" --retry=TERM/5/KILL/5
+    fi
+    rm -f "$PID_FILE"
+    update_status 0 "Stopped"
+}
+
+do_reload() {
+    log "Reloading ${NAME} - re-importing decoder definitions"
+
+    APP_DIR="${APP_DIR}" "${APP_DIR}/Install" install
+    local rc=$?
+
+    local decoder_count
+    decoder_count=$(count_decoders)
+
+    for svc in scada-lorawan-decoder scada-bacnet-out; do
+        if [ -f "/etc/init.d/${svc}" ]; then
+            /etc/init.d/${svc} restart 2>/dev/null || true
+        fi
+    done
+
+    local pid
+    pid=$(read_pid)
+    [ -z "$pid" ] && pid=0
+
+    if [ $rc -eq 0 ]; then
+        update_status "$pid" "${decoder_count} decoders active (reloaded)"
+        log "Reload complete: ${decoder_count} decoders re-imported"
+    else
+        update_status "$pid" "Reload failed (import error)"
+        log "ERROR: Reload failed"
+    fi
+}
+
+case "$1" in
+    start)
+        do_start
+        ;;
+    stop)
+        do_stop
+        ;;
+    restart)
+        do_stop
+        sleep 1
+        do_start
+        ;;
+    reload)
+        do_reload
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|reload}" >&2
+        exit 1
+        ;;
+esac
+
+exit 0
