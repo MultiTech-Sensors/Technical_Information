@@ -49,10 +49,13 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ steps.build.outputs.version }}
           name: Sensor Decoders v${{ steps.build.outputs.version }}
-          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          make_latest: true
+          prerelease: false
           body: |
             ## Sensor Decoder Definitions Custom App
 
@@ -67,5 +70,6 @@ jobs:
             ```
             app-manager --command install --appid <UUID> --appfile /tmp/sensor-decoders_${{ steps.build.outputs.version }}.tgz
             ```
-          files: ${{ steps.build.outputs.tgz }}
+          files: bacnet-app/dist/*.tgz
+          fail_on_unmatched_files: true
           generate_release_notes: true
