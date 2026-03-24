@@ -1,4 +1,4 @@
-name: Build BACNet Decoder Custom App
+name: Build Sensor Decoder Custom App
 
 on:
   push:
@@ -22,12 +22,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install dos2unix
         run: sudo apt-get update -qq && sudo apt-get install -y -qq dos2unix
-
-      - name: Fetch tags
-        run: git fetch --tags --force
 
       - name: Build package
         id: build
@@ -38,15 +37,15 @@ jobs:
           else
             bacnet-app/package.sh
           fi
-          TGZ=$(ls bacnet-app/dist/bacnet-decoders_*.tgz)
-          VERSION=$(basename "$TGZ" .tgz | sed 's/^bacnet-decoders_//')
+          TGZ=$(ls bacnet-app/dist/sensor-decoders_*.tgz)
+          VERSION=$(basename "$TGZ" .tgz | sed 's/^sensor-decoders_//')
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Built version: ${VERSION}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bacnet-decoders-${{ steps.build.outputs.version }}
+          name: sensor-decoders-${{ steps.build.outputs.version }}
           path: bacnet-app/dist/*.tgz
           if-no-files-found: error
 
@@ -66,7 +65,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: bacnet-decoders-${{ steps.version.outputs.version }}
+          name: sensor-decoders-${{ steps.version.outputs.version }}
           path: dist
 
       - name: Create GitHub Release
@@ -83,9 +82,9 @@ jobs:
             - MultiTech MTCT300 current transformer
 
             ### Installation
-            Upload `bacnet-decoders_${{ steps.version.outputs.version }}.tgz` via Device Manager or install manually:
+            Upload `sensor-decoders_${{ steps.version.outputs.version }}.tgz` via Device Manager or install manually:
             ```
-            app-manager --command install --appid <UUID> --appfile /tmp/bacnet-decoders_${{ steps.version.outputs.version }}.tgz
+            app-manager --command install --appid <UUID> --appfile /tmp/sensor-decoders_${{ steps.version.outputs.version }}.tgz
             ```
           files: dist/*.tgz
           generate_release_notes: true

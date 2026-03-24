@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NAME="bacnet-decoders"
+NAME="sensor-decoders"
 TAG="BACNetDecoders"
 APP_DIR=${APP_DIR:-.}
 CONFIG_DIR=${CONFIG_DIR:-${APP_DIR}/config}

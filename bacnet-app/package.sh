@@ -18,7 +18,7 @@ REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SRC_DIR="${SCRIPT_DIR}/src"
 DIST_DIR="${SCRIPT_DIR}/dist"
 DEFS_DIR="${SRC_DIR}/definitions"
-APP_NAME="bacnet-decoders"
+APP_NAME="sensor-decoders"
 BACNET_ZIP="${REPO_DIR}/BACNet.zip"
 MTCT300_ZIP="${REPO_DIR}/MTCT300_direct.zip"
 
@@ -50,6 +50,10 @@ git_version() {
         echo "${desc#v}"
         return
     }
+    if [ -f "${SCRIPT_DIR}/VERSION" ]; then
+        cat "${SCRIPT_DIR}/VERSION" | tr -d '[:space:]'
+        return
+    fi
     local sha
     sha=$(git -C "${REPO_DIR}" rev-parse --short HEAD 2>/dev/null) || sha="unknown"
     echo "0.0.0-dev.${sha}"
